@@ -14,7 +14,7 @@ function App() {
 
   // SSE: курсы валют
   useEffect(() => {
-    const eventSource = new EventSource('/api/currency');
+    const eventSource = new EventSource('http://localhost:8080/api/currency');
     eventSource.onmessage = (e) => {
       if (e.data) {
         const dataObj = JSON.parse(e.data);
@@ -28,7 +28,7 @@ function App() {
 
   // SSE: стакан
   useEffect(() => {
-    const eventSource = new EventSource('/api/orderbook');
+    const eventSource = new EventSource('http://localhost:8080/api/orderbook');
     eventSource.onmessage = (e) => {
       if (e.data) {
         const dataObj = JSON.parse(e.data);
@@ -58,7 +58,7 @@ function App() {
       currency: orderCurrency,
       volume: parseFloat(orderVolume)
     };
-    fetch('/api/order', {
+    fetch('http://localhost:8080/api/order', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
