@@ -1,6 +1,5 @@
 {
   "name": "currency-exchange-frontend",
-  "proxy": "http://localhost:8080",
   "version": "1.0.0",
   "private": true,
   "description": "React app for currency exchange demo",
