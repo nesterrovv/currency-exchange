@@ -1,0 +1,17 @@
+version: '3.8'
+services:
+  backend:
+    build:
+      context: ./currency-exchange
+      dockerfile: Dockerfile
+    container_name: currency-backend
+    ports:
+      - "8080:8080"
+
+  frontend:
+    build:
+      context: ./currency-exchange-frontend
+      dockerfile: Dockerfile
+    container_name: currency-frontend
+    ports:
+      - "80:80"
