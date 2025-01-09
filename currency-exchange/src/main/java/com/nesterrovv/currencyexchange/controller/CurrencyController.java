@@ -14,7 +14,6 @@ import reactor.core.publisher.Mono;
  */
 @RestController
 @RequestMapping("/api")
-@CrossOrigin(origins = "http://localhost:80")
 public class CurrencyController {
 
     private final CurrencyService currencyService;

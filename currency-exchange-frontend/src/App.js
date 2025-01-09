@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, Legend } from 'recharts';
 
 function App() {
-  const [currencyData, setCurrencyData] = useState([]); 
+  const [currencyData, setCurrencyData] = useState([]);
   const [selectedCurrency, setSelectedCurrency] = useState('USD');
   const [filteredData, setFilteredData] = useState([]);
   const [orderBook, setOrderBook] = useState({ bids: [], asks: [] });
@@ -42,47 +42,49 @@ function App() {
 
   // Фильтруем данные для графика по выбранной валюте
   useEffect(() => {
-    const dataForCurrency = currencyData.filter(d => d.currency === selectedCurrency);
+    const dataForCurrency = currencyData
+      .filter((d) => d.currency === selectedCurrency)
+      .map((d) => ({
+        ...d,
+        timestamp: new Date(d.timestamp).toLocaleTimeString(), // Читаемый формат времени
+      }));
     setFilteredData(dataForCurrency);
   }, [selectedCurrency, currencyData]);
 
-  // Цвет линии в зависимости от change
-  const getColor = (change) => {
-    return change >= 0 ? 'red' : 'green';
-  };
-
-  // Обработчик отправки формы
+  // Обработчик отправки заявки
   const handleOrderSubmit = () => {
     const payload = {
       side: orderSide,
       currency: orderCurrency,
-      volume: parseFloat(orderVolume)
+      volume: parseFloat(orderVolume),
     };
     fetch('http://localhost:8080/api/order', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
     })
-    .then((res) => {
-      console.log('Order sent:', payload);
-    })
-    .catch((err) => {
-      console.error('Error:', err);
-    });
+      .then(() => {
+        console.log('Order sent:', payload);
+      })
+      .catch((err) => {
+        console.error('Error:', err);
+      });
   };
 
   return (
     <div style={{ margin: '20px' }}>
       <h1>Курсы валют (реактивно)</h1>
 
+      {/* Переключатель валют */}
       <div>
         <button onClick={() => setSelectedCurrency('USD')}>USD</button>
         <button onClick={() => setSelectedCurrency('EUR')}>EUR</button>
         <button onClick={() => setSelectedCurrency('CNY')}>CNY</button>
       </div>
 
+      {/* График курсов валют */}
       <LineChart width={800} height={400} data={filteredData}>
         <XAxis dataKey="timestamp" />
         <YAxis />
@@ -91,16 +93,14 @@ function App() {
         <Line
           type="monotone"
           dataKey="price"
-          stroke={
-            filteredData.length > 0
-              ? getColor(filteredData[filteredData.length - 1].change)
-              : 'blue'
-          }
+          stroke="#8884d8"
+          strokeWidth={2}
           dot={false}
           isAnimationActive={false}
         />
       </LineChart>
 
+      {/* Форма отправки заявки */}
       <h2>Добавить заявку</h2>
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
         <select value={orderSide} onChange={(e) => setOrderSide(e.target.value)}>
@@ -112,36 +112,40 @@ function App() {
           <option value="EUR">EUR</option>
           <option value="CNY">CNY</option>
         </select>
-        <input 
-          type="number" 
-          value={orderVolume} 
-          onChange={(e) => setOrderVolume(e.target.value)} 
-          min="1" step="1"
+        <input
+          type="number"
+          value={orderVolume}
+          onChange={(e) => setOrderVolume(e.target.value)}
+          min="1"
+          step="1"
           style={{ width: '80px' }}
         />
         <button onClick={handleOrderSubmit}>Отправить</button>
       </div>
 
+      {/* Стакан */}
       <h2>Биржевой стакан</h2>
       <div style={{ display: 'flex', gap: '30px' }}>
         <div>
           <h3>Bids</h3>
           <ul>
-            {orderBook.bids && orderBook.bids.map((bid, i) => (
-              <li key={i}>
-                Price: {bid.price.toFixed(2)}, Vol: {bid.volume.toFixed(2)}
-              </li>
-            ))}
+            {orderBook.bids &&
+              orderBook.bids.map((bid, i) => (
+                <li key={i}>
+                  Price: {bid.price.toFixed(2)}, Vol: {bid.volume.toFixed(2)}
+                </li>
+              ))}
           </ul>
         </div>
         <div>
           <h3>Asks</h3>
           <ul>
-            {orderBook.asks && orderBook.asks.map((ask, i) => (
-              <li key={i}>
-                Price: {ask.price.toFixed(2)}, Vol: {ask.volume.toFixed(2)}
-              </li>
-            ))}
+            {orderBook.asks &&
+              orderBook.asks.map((ask, i) => (
+                <li key={i}>
+                  Price: {ask.price.toFixed(2)}, Vol: {ask.volume.toFixed(2)}
+                </li>
+              ))}
           </ul>
         </div>
       </div>
