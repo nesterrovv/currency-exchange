@@ -1,5 +1,6 @@
 package com.nesterrovv.currencyexchange.service;
 
+import com.nesterrovv.currencyexchange.model.CurrencyChangedNotification;
 import com.nesterrovv.currencyexchange.model.CurrencyData;
 import com.nesterrovv.currencyexchange.model.OrderBook;
 import com.nesterrovv.currencyexchange.model.UserOrder;
@@ -18,6 +19,7 @@ public class CurrencyService {
 
     private final Flux<CurrencyData> currencyFlux;
     private Flux<OrderBook> orderBookFlux;
+    private Flux<CurrencyChangedNotification> currencyChangedNotificationFlux;
 
     private final ConcurrentLinkedQueue<UserOrder> userOrders = new ConcurrentLinkedQueue<>();
 
@@ -48,6 +50,16 @@ public class CurrencyService {
 
         this.currencyFlux = Flux.merge(usdStream, eurStream, cnyStream).share();
         this.orderBookFlux = createAutoOrderBookFlux();
+        this.currencyChangedNotificationFlux = createNotificationFlux();
+    }
+
+    private Flux<CurrencyChangedNotification> createNotificationFlux() {
+        return currencyFlux.filter(currencyData -> Math.abs(currencyData.getChange()) > 5)
+                .map(currencyData -> new CurrencyChangedNotification(
+                        currencyData.getCurrency(),
+                        currencyData.getPrice(),
+                        currencyData.getChange()
+                )).share();
     }
 
     private CurrencyData generateCurrency(
@@ -70,7 +82,7 @@ public class CurrencyService {
         long sellCount = userOrders.stream().filter(o -> o.getCurrency().equals(currency) && o.getSide().equalsIgnoreCase("SELL")).count();
 
         // Новый коэффициент влияния
-        double activityImpact = (buyCount - sellCount) * 0.5; // Сильное влияние разницы покупок/продаж
+        double activityImpact = (buyCount - sellCount) * 4; // Сильное влияние разницы покупок/продаж
         price += activityImpact;
 
         // Логирование для отладки
@@ -83,7 +95,6 @@ public class CurrencyService {
 
         return new CurrencyData(currency, price, System.currentTimeMillis(), changePct);
     }
-
 
 
     private Flux<OrderBook> createAutoOrderBookFlux() {
@@ -112,6 +123,10 @@ public class CurrencyService {
 
     public Flux<OrderBook> getOrderBookFlux() {
         return orderBookFlux;
+    }
+
+    public Flux<CurrencyChangedNotification> getCurrencyChangedNotificationFlux() {
+        return currencyChangedNotificationFlux;
     }
 
     public OrderBook generateManualOrderBook() {
