@@ -1,5 +1,6 @@
 package com.nesterrovv.currencyexchange.controller;
 
+import com.nesterrovv.currencyexchange.model.CurrencyChangedNotification;
 import com.nesterrovv.currencyexchange.model.CurrencyData;
 import com.nesterrovv.currencyexchange.model.OrderBook;
 import com.nesterrovv.currencyexchange.model.UserOrder;
@@ -10,7 +11,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 /**
- * REST-контроллер для SSE (currency, orderbook) + прием заявок.
+ * REST-контроллер для SSE (currency, orderbook, notification) + прием заявок.
  */
 @RestController
 @RequestMapping("/api")
@@ -37,6 +38,14 @@ public class CurrencyController {
     @GetMapping(value = "/orderbook", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<OrderBook> streamOrderBook() {
         return currencyService.getOrderBookFlux();
+    }
+
+    /**
+     * SSE-поток уведомлений
+     */
+    @GetMapping(value = "/notification", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public Flux<CurrencyChangedNotification> streamCurrencyChangedNotification() {
+        return currencyService.getCurrencyChangedNotificationFlux();
     }
 
     /**

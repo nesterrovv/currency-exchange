@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, Legend } from 'recharts';
+import { toast, ToastContainer } from 'react-toastify'; 
+import 'react-toastify/dist/ReactToastify.css';
 
 function App() {
   const [currencyData, setCurrencyData] = useState([]);
   const [selectedCurrency, setSelectedCurrency] = useState('USD');
   const [filteredData, setFilteredData] = useState([]);
   const [orderBook, setOrderBook] = useState({ bids: [], asks: [] });
+  const [notifications, setNotifications] = useState([]);
 
   // Поля для формы заявок
   const [orderSide, setOrderSide] = useState('BUY');
@@ -35,6 +38,29 @@ function App() {
         setOrderBook(dataObj);
       }
     };
+    return () => {
+      eventSource.close();
+    };
+  }, []);
+
+  useEffect(() => {
+    const eventSource = new EventSource('http://localhost:8080/api/notification');
+
+    eventSource.onmessage = (event) => {
+      if(event.data){
+        const notification = JSON.parse(event.data);
+        const message = `${notification.currentCurrency}: Цена ${notification.currentPrice.toFixed(2)} (Изменение: ${notification.percentage.toFixed(2)}%)`;
+        toast.info(message, {
+          position: 'top-right',
+          autoClose: 5000, // Автоматическое закрытие через 5 секунд
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+        });
+      }
+    };
+
     return () => {
       eventSource.close();
     };
@@ -75,6 +101,8 @@ function App() {
 
   return (
     <div style={{ margin: '20px' }}>
+      {/* Контейнер для отображения уведомлений */}
+      <ToastContainer />
       <h1>Курсы валют (реактивно)</h1>
 
       {/* Переключатель валют */}
