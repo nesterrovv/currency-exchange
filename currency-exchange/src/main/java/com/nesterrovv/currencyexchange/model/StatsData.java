@@ -5,12 +5,12 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 @Data
-@NoArgsConstructor
 @AllArgsConstructor
-public class UserOrder {
+@NoArgsConstructor
+public class StatsData {
 
-    private String side;
     private String currency;
-    private double volume;
-    private Double userPrice;
+    private double dayHigh;
+    private double dayLow;
+    private double dayVolume;
 }

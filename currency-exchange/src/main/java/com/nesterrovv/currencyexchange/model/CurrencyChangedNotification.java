@@ -8,6 +8,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class CurrencyChangedNotification {
+
     private String currentCurrency;
     private double currentPrice;
     private double percentage;

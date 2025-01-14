@@ -1,15 +1,13 @@
 package com.nesterrovv.currencyexchange.service;
 
-import com.nesterrovv.currencyexchange.model.CurrencyChangedNotification;
-import com.nesterrovv.currencyexchange.model.CurrencyData;
-import com.nesterrovv.currencyexchange.model.OrderBook;
-import com.nesterrovv.currencyexchange.model.UserOrder;
+import com.nesterrovv.currencyexchange.model.*;
+import jakarta.annotation.PostConstruct;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Sinks;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicReference;
@@ -40,26 +38,71 @@ public class CurrencyService {
 
     private boolean autoGenerateOrderBook = true;
 
+    // для сделок
+    private final Sinks.Many<TradeEvent> tradeSink = Sinks.many().multicast().onBackpressureBuffer();
+    private final Flux<TradeEvent> tradeFlux = tradeSink.asFlux().share();
+
+    private Flux<StatsData> statsFlux;
+
     public CurrencyService() {
+        // backpressure + троттлинг
         Flux<CurrencyData> usdStream = Flux.interval(Duration.ofMillis(200))
-                .map(tick -> generateCurrency("USD", MEDIAN_USD, AMPLITUDE, phaseUsd, prevUsd, tick));
+                .map(tick -> generateCurrency("USD", MEDIAN_USD, AMPLITUDE, phaseUsd, prevUsd, tick))
+                .onBackpressureLatest()
+                .sample(Duration.ofSeconds(1));
+
         Flux<CurrencyData> eurStream = Flux.interval(Duration.ofMillis(200))
-                .map(tick -> generateCurrency("EUR", MEDIAN_EUR, AMPLITUDE, phaseEur, prevEur, tick));
+                .map(tick -> generateCurrency("EUR", MEDIAN_EUR, AMPLITUDE, phaseEur, prevEur, tick))
+                .onBackpressureLatest()
+                .sample(Duration.ofSeconds(1));
+
         Flux<CurrencyData> cnyStream = Flux.interval(Duration.ofMillis(200))
-                .map(tick -> generateCurrency("CNY", MEDIAN_CNY, AMPLITUDE, phaseCny, prevCny, tick));
+                .map(tick -> generateCurrency("CNY", MEDIAN_CNY, AMPLITUDE, phaseCny, prevCny, tick))
+                .onBackpressureLatest()
+                .sample(Duration.ofSeconds(1));
 
         this.currencyFlux = Flux.merge(usdStream, eurStream, cnyStream).share();
         this.orderBookFlux = createAutoOrderBookFlux();
         this.currencyChangedNotificationFlux = createNotificationFlux();
     }
 
+    @PostConstruct
+    private void initStatsFlux() {
+        this.statsFlux = tradeFlux
+                .groupBy(TradeEvent::getCurrency)
+                .flatMap(groupedFlux ->
+                        groupedFlux
+                                .scan(new StatsAccumulator(groupedFlux.key()), (acc, trade) -> {
+                                    acc.update(trade);
+                                    return acc;
+                                })
+                                .map(StatsAccumulator::toStatsData)
+                )
+                .share();
+    }
+
+    public Flux<StatsData> getStatsFlux() {
+        return statsFlux;
+    }
+
     private Flux<CurrencyChangedNotification> createNotificationFlux() {
-        return currencyFlux.filter(currencyData -> Math.abs(currencyData.getChange()) > 5)
+        Flux<CurrencyChangedNotification> changeNotifications = currencyFlux
+                .filter(currencyData -> Math.abs(currencyData.getChange()) > 5)
                 .map(currencyData -> new CurrencyChangedNotification(
                         currencyData.getCurrency(),
                         currencyData.getPrice(),
                         currencyData.getChange()
-                )).share();
+                ));
+
+        Flux<CurrencyChangedNotification> largeTradeNotifications = tradeFlux
+                .filter(trade -> trade.getVolume() >= 1000)
+                .map(trade -> new CurrencyChangedNotification(
+                        trade.getCurrency(),
+                        trade.getPrice(),
+                        9999 // Условно, используем как сигнал
+                ));
+
+        return Flux.merge(changeNotifications, largeTradeNotifications).share();
     }
 
     private CurrencyData generateCurrency(
@@ -74,28 +117,25 @@ public class CurrencyService {
         double sin = Math.sin(OMEGA * time + phase);
         double randomFactor = ThreadLocalRandom.current().nextDouble(-0.02, 0.02);
 
-        // Базовая цена с учётом синусоиды и случайности
         double price = median * (1 + amplitude * sin + randomFactor);
 
-        // Влияние активности в стакане
-        long buyCount = userOrders.stream().filter(o -> o.getCurrency().equals(currency) && o.getSide().equalsIgnoreCase("BUY")).count();
-        long sellCount = userOrders.stream().filter(o -> o.getCurrency().equals(currency) && o.getSide().equalsIgnoreCase("SELL")).count();
+        long buyVolumeTotal = userOrders.stream()
+                .filter(o -> o.getCurrency().equals(currency) && o.getSide().equalsIgnoreCase("BUY"))
+                .mapToLong(o -> (long) o.getVolume())
+                .sum();
+        long sellVolumeTotal = userOrders.stream()
+                .filter(o -> o.getCurrency().equals(currency) && o.getSide().equalsIgnoreCase("SELL"))
+                .mapToLong(o -> (long) o.getVolume())
+                .sum();
 
-        // Новый коэффициент влияния
-        double activityImpact = (buyCount - sellCount) * 4; // Сильное влияние разницы покупок/продаж
+        double activityImpact = (buyVolumeTotal - sellVolumeTotal) * 10;
         price += activityImpact;
 
-        // Логирование для отладки
-        System.out.printf("Currency: %s | BuyCount: %d | SellCount: %d | ActivityImpact: %.2f | New Price: %.2f%n",
-                currency, buyCount, sellCount, activityImpact, price);
-
-        // Вычисляем процент изменения цены
         double oldPrice = prevRef.getAndSet(price);
         double changePct = (price - oldPrice) / oldPrice * 100;
 
         return new CurrencyData(currency, price, System.currentTimeMillis(), changePct);
     }
-
 
     private Flux<OrderBook> createAutoOrderBookFlux() {
         return Flux.interval(Duration.ofMillis(500))
@@ -139,16 +179,95 @@ public class CurrencyService {
     private void processUserOrders(List<OrderBook.Order> bids, List<OrderBook.Order> asks) {
         while (!userOrders.isEmpty()) {
             UserOrder order = userOrders.poll();
+            double orderVolume = order.getVolume();
+
+
             double basePrice = getBasePrice(order.getCurrency());
-            double randomOffset = ThreadLocalRandom.current().nextDouble(-1, 1);
-            double price = basePrice + randomOffset;
-            OrderBook.Order newOrder = new OrderBook.Order(price, order.getVolume());
-            if ("BUY".equalsIgnoreCase(order.getSide())) {
-                bids.add(newOrder);
+
+            // Если пользователь указал конкретную цену, берём её.
+            // Если userPrice == null, продолжаем старую логику (basePrice + случайный offset).
+            double finalPrice;
+            if (order.getUserPrice() != null) {
+                finalPrice = order.getUserPrice();
             } else {
-                asks.add(newOrder);
+                double randomOffset = ThreadLocalRandom.current().nextDouble(-1, 1);
+                finalPrice = basePrice + randomOffset;
+            }
+
+            if ("BUY".equalsIgnoreCase(order.getSide())) {
+                // Частичная логика исполнения
+                asks.sort(Comparator.comparingDouble(OrderBook.Order::getPrice));
+                int i = 0;
+                while (i < asks.size() && orderVolume > 0) {
+                    OrderBook.Order currentAsk = asks.get(i);
+                    if (currentAsk.getPrice() <= finalPrice) {
+                        double availableVol = currentAsk.getVolume();
+                        if (availableVol <= orderVolume) {
+                            orderVolume -= availableVol;
+                            tradeSink.tryEmitNext(new TradeEvent(
+                                    order.getCurrency(),
+                                    currentAsk.getPrice(),
+                                    availableVol,
+                                    System.currentTimeMillis()
+                            ));
+                            asks.remove(i);
+                        } else {
+                            currentAsk.setVolume(availableVol - orderVolume);
+                            tradeSink.tryEmitNext(new TradeEvent(
+                                    order.getCurrency(),
+                                    currentAsk.getPrice(),
+                                    orderVolume,
+                                    System.currentTimeMillis()
+                            ));
+                            orderVolume = 0;
+                        }
+                    } else {
+                        i++;
+                    }
+                }
+                // Остаток (не исполненная часть) уходит в bids
+                if (orderVolume > 0) {
+                    bids.add(new OrderBook.Order(finalPrice, orderVolume));
+                }
+
+            } else {
+                // SELL-логика
+                bids.sort((o1, o2) -> Double.compare(o2.getPrice(), o1.getPrice()));
+                int i = 0;
+                while (i < bids.size() && orderVolume > 0) {
+                    OrderBook.Order currentBid = bids.get(i);
+                    if (currentBid.getPrice() >= finalPrice) {
+                        double availableVol = currentBid.getVolume();
+                        if (availableVol <= orderVolume) {
+                            orderVolume -= availableVol;
+                            tradeSink.tryEmitNext(new TradeEvent(
+                                    order.getCurrency(),
+                                    currentBid.getPrice(),
+                                    availableVol,
+                                    System.currentTimeMillis()
+                            ));
+                            bids.remove(i);
+                        } else {
+                            currentBid.setVolume(availableVol - orderVolume);
+                            tradeSink.tryEmitNext(new TradeEvent(
+                                    order.getCurrency(),
+                                    currentBid.getPrice(),
+                                    orderVolume,
+                                    System.currentTimeMillis()
+                            ));
+                            orderVolume = 0;
+                        }
+                    } else {
+                        i++;
+                    }
+                }
+                // Остаток уходит в asks
+                if (orderVolume > 0) {
+                    asks.add(new OrderBook.Order(finalPrice, orderVolume));
+                }
             }
         }
+
         bids.sort((o1, o2) -> Double.compare(o2.getPrice(), o1.getPrice()));
         asks.sort((o1, o2) -> Double.compare(o1.getPrice(), o2.getPrice()));
     }
@@ -181,4 +300,5 @@ public class CurrencyService {
             default -> MEDIAN_USD;
         };
     }
+
 }

@@ -5,6 +5,9 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import java.util.List;
 
+/**
+ * Простейшая модель стакана: bids, asks
+ */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -17,8 +20,9 @@ public class OrderBook {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class Order {
+
         private double price;
         private double volume;
-    }
 
+    }
 }

@@ -11,11 +11,12 @@ public class WebFluxConfig implements WebFluxConfigurer {
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {
-        registry.addMapping("/api/**") // Настройка маршрутов, для которых применяется CORS
-                .allowedOrigins("http://localhost", "http://localhost:80") // Разрешаем оба варианта
-                .allowedMethods("GET", "POST") // Указываем разрешённые HTTP-методы
-                .allowedHeaders("*") // Разрешаем любые заголовки
-                .allowCredentials(true); // Разрешаем отправку cookies, если это нужно
+        registry.addMapping("/api/**")
+                .allowedOrigins("http://localhost:3000", "http://localhost:80", "http://localhost")
+                .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+                .allowedHeaders("*")
+                .allowCredentials(true)
+                .maxAge(3600);
     }
 
 }

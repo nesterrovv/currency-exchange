@@ -4,13 +4,15 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+/**
+ * Модель для фиксации сделки (trade) при исполнении ордеров.
+ */
 @Data
-@NoArgsConstructor
 @AllArgsConstructor
-public class UserOrder {
-
-    private String side;
+@NoArgsConstructor
+public class TradeEvent {
     private String currency;
+    private double price;
     private double volume;
-    private Double userPrice;
+    private long timestamp;
 }
